@@ -6,6 +6,12 @@ __pycache__/
 dist/
 build/
 
+# Credentials (never commit)
+credentials.yaml
+credentials/
+*.pem
+*.key
+
 # Environment
 .env
 .env.*
@@ -19,8 +25,3 @@ build/
 # OS
 .DS_Store
 Thumbs.db
-
-# Credentials (never commit)
-credentials/
-*.pem
-*.key

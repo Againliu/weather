@@ -1,217 +1,112 @@
-# 🌤️ Weather — Free Weather & Forecast Skill for AI Agents
+# 多源气象数据统一接口
 
-[中文](#中文说明)
+> 五大数据平台，自动选择最优源，覆盖全场景气象需求。
 
-Give your AI agent instant access to real-time weather data worldwide — **zero API keys, zero accounts, zero cost**. Combines two free, production-grade weather services into a single skill with both human-readable output and structured JSON for programmatic use.
+## 快速开始
 
-## What Data You Get
-
-| Data Type | Source | Coverage | Granularity |
-|-----------|--------|----------|-------------|
-| **Current conditions** | wttr.in + Open-Meteo | Global (any city/airport/coordinates) | Real-time |
-| **Temperature** | Both | Global | Current + hourly + daily |
-| **Humidity** | wttr.in | Global | Current |
-| **Wind speed & direction** | Both | Global | Current + hourly |
-| **Weather condition** | Both | Global | 15+ condition codes (clear/cloudy/rain/snow/thunderstorm…) |
-| **Multi-day forecast** | wttr.in | Global | 1-3 day forecasts |
-| **Moon phase** | wttr.in | Global | Current |
-| **Precipitation** | Open-Meteo | Global | Hourly mm |
-| **Visibility** | Open-Meteo | Global | Hourly km |
-| **UV Index** | Open-Meteo | Global | Hourly |
-| **Sunrise/Sunset** | Open-Meteo | Global | Daily |
-
-## Why This Skill
-
-- **No setup friction**: No API keys, no OAuth, no rate-limit management — just `curl`
-- **Dual-source redundancy**: If wttr.in is down, Open-Meteo works (and vice versa)
-- **Two output modes**: Human-readable text for quick answers, structured JSON for data pipelines
-- **Global coverage**: Any city name, IATA airport code (JFK, PEK, LHR), or lat/lon coordinates
-- **Battle-tested**: Used daily by multiple AI agents in production
-
-## Quick Start
+### 1. 安装
 
 ```bash
-# Current weather — one line
-curl -s "wttr.in/Beijing?format=3"
-# → Beijing: ⛅️ +22°C
+# 复制 skill 目录到 Hermes skills 目录
+cp -r multi-source-weather ~/.hermes/skills/
+cd ~/.hermes/skills/multi-source-weather
 
-# Compact with details
-curl -s "wttr.in/Tokyo?format=%l:+%c+%t+%h+%w"
-# → Tokyo: 🌧️ +18°C 85% ↗12km/h
-
-# Full 3-day forecast (plain text)
-curl -s "wttr.in/London?T"
-
-# Save as PNG image
-curl -s "wttr.in/Berlin.png" -o /tmp/weather.png
-
-# Structured JSON (for programmatic use)
-curl -s "https://api.open-meteo.com/v1/forecast?latitude=39.90&longitude=116.41&current_weather=true"
+# 创建凭据文件（可选，Open-Meteo 和 NASA POWER 无需凭据）
+cp credentials.example.yaml credentials.yaml
+# 编辑 credentials.yaml 填入你的 API Key
 ```
 
-## Included Tools
+### 2. 获取 API Key
 
-| Tool | Description |
-|------|-------------|
-| `references/weather.sh` | Bash script with 9 Chinese city presets (Beijing, Shanghai, Guangzhou, Shenzhen, Hangzhou, Chengdu, Xi'an, Hong Kong, Tokyo), Chinese weather descriptions, and simple/full output modes |
-
-## Format Codes Reference
-
-| Code | Meaning | Example |
+| 平台 | 是否需要 | 获取方式 |
 |------|---------|---------|
-| `%c` | Weather condition icon | ⛅️ 🌧️ ❄️ |
-| `%t` | Temperature | +22°C |
-| `%h` | Humidity | 71% |
-| `%w` | Wind speed + direction | ↙5km/h |
-| `%l` | Location name | London |
-| `%m` | Moon phase | 🌒 |
+| Open-Meteo | ❌ 不需要 | 直接使用 |
+| NASA POWER | ❌ 不需要 | 直接使用 |
+| 和风天气 | ✅ 需要 | https://console.qweather.com 注册 |
+| 彩云天气 | ✅ 需要 | https://platform.caiyunapp.com 注册 |
+| IBM Weather | ✅ 需要 | https://developer.ibm.com/apis/catalog/weather-data 注册 |
 
-## Query Modifiers
-
-| Modifier | Effect | Example |
-|----------|--------|---------|
-| `?m` | Metric units (°C, km/h) | `wttr.in/Paris?m` |
-| `?u` | US units (°F, mph) | `wttr.in/NYC?u` |
-| `?0` | Current weather only | `wttr.in/Seoul?0` |
-| `?1` | Today only (no forecast) | `wttr.in/Bangkok?1` |
-| `?T` | Plain text, no ANSI colors | `wttr.in/Berlin?T` |
-
-## Open-Meteo Weather Codes
-
-| Code | Condition |
-|------|-----------|
-| 0 | ☀️ Clear sky |
-| 1–3 | ⛅ Partly cloudy / Overcast |
-| 45–48 | 🌫️ Fog |
-| 51–55 | 🌦️ Drizzle (light/moderate/dense) |
-| 61–65 | 🌧️ Rain (slight/moderate/heavy) |
-| 71–75 | ❄️ Snow (slight/moderate/heavy) |
-| 80–82 | 🌧️ Rain showers |
-| 95 | ⛈️ Thunderstorm |
-
-## Prerequisites
-
-- `curl` — for wttr.in and Open-Meteo API calls
-- `jq` — for the included bash script's JSON parsing
-- **No API keys required**
-
-## Typical Use Cases
-
-- **Agriculture AI**: Check weather before recommending spray/fertilize operations
-- **Travel assistants**: Quick weather lookup for trip planning
-- **Monitoring agents**: Periodic weather checks for outdoor equipment
-- **Daily briefings**: Include weather in morning summaries
-
-## Version
-
-v1.0.0
-
----
-
-## 中文说明
-
-# 🌤️ Weather — AI Agent 免费天气查询 Skill
-
-让你的 AI Agent 即时获取全球实时天气数据 — **无需 API Key、无需注册账号、零成本**。整合两个免费、生产级天气服务，同时提供人类可读输出和结构化 JSON 数据。
-
-## 数据能力
-
-| 数据类型 | 数据源 | 覆盖范围 | 精度 |
-|---------|--------|---------|------|
-| **实时天气状况** | wttr.in + Open-Meteo | 全球（任意城市/机场/坐标） | 实时 |
-| **温度** | 双源 | 全球 | 实时 + 逐小时 + 逐日 |
-| **湿度** | wttr.in | 全球 | 实时 |
-| **风速风向** | 双源 | 全球 | 实时 + 逐小时 |
-| **天气状况** | 双源 | 全球 | 15+ 种天气代码（晴/多云/雨/雪/雷暴…） |
-| **多日预报** | wttr.in | 全球 | 1-3 天预报 |
-| **月相** | wttr.in | 全球 | 实时 |
-| **降水量** | Open-Meteo | 全球 | 逐小时 mm |
-| **能见度** | Open-Meteo | 全球 | 逐小时 km |
-| **紫外线指数** | Open-Meteo | 全球 | 逐小时 |
-| **日出日落** | Open-Meteo | 全球 | 逐日 |
-
-## 核心价值
-
-- **零配置门槛**：无需 API Key、无需 OAuth、无需管理限流 — 一个 `curl` 命令搞定
-- **双源冗余**：wttr.in 挂了 Open-Meteo 照样用（反之亦然）
-- **双模式输出**：人类可读文本用于快速查看，结构化 JSON 用于数据管道
-- **全球覆盖**：支持城市名、IATA 机场代码（JFK、PEK、LHR）、经纬度坐标
-- **生产验证**：多个 AI Agent 每日实际使用中
-
-## 快速上手
+### 3. 使用示例
 
 ```bash
-# 一行拿到当前天气
-curl -s "wttr.in/北京?format=3"
-# → Beijing: ⛅️ +22°C
+# 实时天气（中国最优）
+curl --compressed "https://{QWEATHER_HOST}/v7/grid-weather/now?location={LON},{LAT}&key={QWEATHER_KEY}"
 
-# 紧凑格式（含湿度风速）
-curl -s "wttr.in/东京?format=%l:+%c+%t+%h+%w"
-# → Tokyo: 🌧️ +18°C 85% ↗12km/h
+# ET0 蒸散量（仅 Open-Meteo）
+curl "https://api.open-meteo.com/v1/forecast?latitude={LAT}&longitude={LON}&daily=et0_fao_evapotranspiration_sum&timezone=Asia/Shanghai"
 
-# 完整 3 天预报（纯文本）
-curl -s "wttr.in/伦敦?T"
+# 机场实测（Ground Truth）
+curl "https://api.weather.com/v1/location/ZBAA:9:CN/observations/historical.json?apiKey={IBM_KEY}&units=m&startDate=20260615&endDate=20260615"
 
-# 保存为 PNG 图片
-curl -s "wttr.in/柏林.png" -o /tmp/weather.png
-
-# 结构化 JSON（程序调用）
-curl -s "https://api.open-meteo.com/v1/forecast?latitude=39.90&longitude=116.41&current_weather=true"
+# NASA POWER 历史遥感
+curl "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M_MAX,T2M_MIN,PRECTOTCORR&latitude=41.48&longitude=86.21&start=20260101&end=20260601&community=ag&format=JSON"
 ```
 
-## 附带工具
+## 五平台定位
 
-| 工具 | 说明 |
-|------|------|
-| `references/weather.sh` | Bash 脚本，内置 9 个中国城市坐标（北京/上海/广州/深圳/杭州/成都/西安/香港/东京），中文天气描述，简洁/详细两种输出模式 |
+| 平台 | 定位 | 历史深度 | 费用 |
+|------|------|---------|------|
+| **Open-Meteo** | 全球通用核心源 | 1940年至今 | 免费无限制 |
+| **和风天气** | 中国首选 | 7天 | 免费5万次/月 |
+| **彩云天气** | 分钟级降水最优 | 无 | 按量付费 |
+| **IBM Weather** | 机场实测 Ground Truth | 90天+ | 免费（限速） |
+| **NASA POWER** | 农业/能源专用 | 1981年至今 | 完全免费 |
 
-## 格式化代码速查
+## 核心能力
 
-| 代码 | 含义 | 示例 |
-|------|------|------|
-| `%c` | 天气图标 | ⛅️ 🌧️ ❄️ |
-| `%t` | 温度 | +22°C |
-| `%h` | 湿度 | 71% |
-| `%w` | 风速+风向 | ↙5km/h |
-| `%l` | 地点 | London |
-| `%m` | 月相 | 🌒 |
+- **实时天气**：温度、湿度、风速、降水、云量、气压
+- **天气预报**：分钟级降水（2小时）、逐小时（384h）、逐日（16天）、40天次季节
+- **历史数据**：模型再分析（1940年+）、机场实测（90天+）、卫星遥感（1981年+）
+- **农业数据**：ET0蒸散量、土壤温湿度（5层）、降水累计、日照时数
+- **能源数据**：太阳辐射、多高度风速、云量、温度
+- **空气质量**：PM2.5/PM10/O3/NO2/SO2/CO、AQI指数
+- **灾害预警**：气象预警、分钟级降水预警、台风路径、洪水/河流
+- **预报验证**：基于机场实测的预报准确率评估
 
-## 查询修饰符
+## 文件结构
 
-| 修饰符 | 效果 | 示例 |
-|--------|------|------|
-| `?m` | 公制单位（°C, km/h） | `wttr.in/Paris?m` |
-| `?u` | 美制单位（°F, mph） | `wttr.in/NYC?u` |
-| `?0` | 仅当前天气 | `wttr.in/Seoul?0` |
-| `?1` | 仅今日天气 | `wttr.in/Bangkok?1` |
-| `?T` | 纯文本，无 ANSI 颜色 | `wttr.in/Berlin?T` |
+```
+multi-source-weather/
+├── SKILL.md                          # 完整使用文档（必须通读）
+├── credentials.yaml                  # 凭据配置（不上传Git）
+├── credentials.example.yaml          # 凭据模板
+├── README.md                         # 本文件
+├── references/
+│   ├── qweather-api.md               # 和风天气 API 参考
+│   ├── caiyun-api.md                 # 彩云天气 API 参考
+│   ├── open-meteo-api.md             # Open-Meteo API 参考
+│   ├── ibm-weather-api.md            # IBM Weather API 参考
+│   ├── nasa-power-api.md             # NASA POWER API 参考
+│   ├── caiyun-v3-signing.py          # 彩云天气 v3 签名工具
+│   ├── qweather-api-setup.md         # 和风天气接入配置
+│   ├── provider-comparison.md        # 五平台详细对比表
+│   ├── accuracy-validation.md        # 五源数据准确性验证报告
+│   └── cma-data-source.md            # 中国气象局数据源调研
+└── scripts/
+    ├── daily_collect.py              # 每日数据采集脚本
+    └── validate_forecasts.py         # 预报准确率验证脚本
+```
 
-## Open-Meteo 天气代码对照
+## 数据验证方法论
 
-| 代码 | 天气状况 |
-|------|---------|
-| 0 | ☀️ 晴 |
-| 1–3 | ⛅ 少云 / 多云 / 阴 |
-| 45–48 | 🌫️ 雾 |
-| 51–55 | 🌦️ 毛毛雨（轻/中/浓） |
-| 61–65 | 🌧️ 雨（小/中/大） |
-| 71–75 | ❄️ 雪（小/中/大） |
-| 80–82 | 🌧️ 阵雨 |
-| 95 | ⛈️ 雷暴 |
+本 skill 使用 **IBM Weather（机场METAR实测数据）** 作为 Ground Truth 基准，验证各平台预报准确率：
 
-## 环境要求
+1. 每日采集各平台预报数据（day+1, day+3, day+7）
+2. 同时采集 IBM Weather 机场实测数据
+3. 7天后对比预报值 vs 实测值
+4. 计算 MAE、RMSE，按平台、指标、提前天数统计准确率
 
-- `curl` — 用于 wttr.in 和 Open-Meteo API 调用
-- `jq` — 附带 Bash 脚本解析 JSON 用
-- **无需任何 API Key**
+详见 `references/accuracy-validation.md`
 
-## 典型使用场景
+## 注意事项
 
-- **农业 AI**：喷洒/施肥作业前检查天气条件
-- **出行助手**：行程规划时快速查天气
-- **监控 Agent**：定时检查户外设备所在区域天气
-- **日报生成**：在晨间摘要中加入天气信息
+- **凭据安全**：`credentials.yaml` 已加入 `.gitignore`，不上传 Git
+- **坐标顺序**：各平台不同，详见 SKILL.md 的 Common Pitfalls
+- **和风天气**：必须加 `--compressed`，必须用专属 API Host
+- **彩云天气**：湿度是 0-1 小数，气压是 Pa，需转换
+- **NASA POWER**：最新数据有 2-3 天延迟，缺失值返回 -999.0
+- **Open-Meteo Archive**：不是实测，是 ERA5 再分析，不能作为 Ground Truth
 
-## 版本
+## 许可证
 
-v1.0.0
+MIT License
