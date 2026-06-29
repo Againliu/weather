@@ -1,7 +1,7 @@
 ---
 name: multi-source-weather
 description: 多源气象数据统一接口。根据查询地点和需求自动选择最优数据源（Open-Meteo / 和风天气 / 彩云天气 / IBM Weather / NASA POWER）。覆盖实时天气、预报、历史实测、分钟级降水、ET0蒸散量、土壤湿度、空气质量、太阳辐射、预报准确率验证等全场景需求。适用于农业、能源、物流、科研、应急管理等各行各业。
-version: 4.0.0
+version: 5.1.0
 author: Jian
 license: MIT
 platforms: [linux, macos, windows]
@@ -287,12 +287,14 @@ metadata:
 **数据验证方法论**：
 - 使用 **IBM Weather（机场METAR实测数据）** 作为 Ground Truth 基准，验证预报准确率
 - IBM Weather 提供中国民航机场地面站实测数据，每小时更新，质量高
+- **预报验证必须使用具体点位，不要用泛城市名**：Ground Truth 是哪个机场/METAR/气象站，Open-Meteo / 和风 / 彩云 / NASA POWER 的预报查询就尽量使用同一站点经纬度；若业务目标点（如农场）没有实测站，必须记录目标点坐标、替代站坐标、距离和说明
+- **避免“城市中心点预报 vs 机场站实测”空间错配**：和风优先用 `location={lon},{lat}` 网格查询，而不是行政区 location_id；Open-Meteo 用 `latitude={lat}&longitude={lon}`；彩云用路径 `{lon},{lat}`
 - Open-Meteo Archive 可作为补充（ERA5再分析+气象站观测），但不是实测
 - NASA POWER 可作为长期历史趋势验证（1981年至今，卫星+地面站校正）
-- 验证应在多个地理坐标上进行（至少5个不同城市/区域），不能只用单一地点
+- 验证应在多个具体站点上进行（至少5个不同气候区/机场站），不能只用单一地点或泛城市名
 - 验证维度：温度偏差（°C）、降水准确性（mm）、风速偏差（km/h）、湿度偏差（%）
-- 验证周期：提前1天/3天/7天的预报值 vs 实测值
-- 示例验证脚本见 `references/accuracy-validation.md`
+- 验证周期：按提前1天到7天分别统计，而不是只等7天后才出结果；输出应包含 lead_days 维度的 MAE/RMSE/样本数
+- 示例验证脚本见 `references/accuracy-validation.md`；具体站点化改造参考 `references/point-based-forecast-validation.md`
 
 **数据源标注**：
 - 每条数据必须标注来源（Open-Meteo / 和风天气 / 彩云天气 / IBM Weather / NASA POWER）
@@ -410,9 +412,10 @@ curl --compressed "https://{QWEATHER_HOST}/v7/weather/7d?location={LON},{LAT}&ke
 
 ### 6. 中国气象局官方气象灾害预警（首选）
 ```bash
-# 查询全国预警（按省份过滤）
-# province=65 为新疆，6528 为巴州，652828 为尉犁县
-curl "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=50&signaltype=&signallevel=&province=65"
+# 查询全国当前预警，再按 alertid/标题过滤目标区域。
+# 注意：2026-06-29 实测 province=65 可能返回 0，但全国列表中存在新疆/巴州/尉犁预警，不能只依赖 province 参数。
+# 尉犁县代码为 652823；不要误写成 652828（和硕县）。
+curl "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=200&signaltype=&signallevel="
 
 # 返回格式：
 # {
@@ -420,27 +423,20 @@ curl "http://www.nmc.cn/rest/findAlarm?pageNo=1&pageSize=50&signaltype=&signalle
 #     "page": {
 #       "list": [
 #         {
-#           "alertid": "65282841600000_20260623001215",
-#           "issuetime": "2026/06/23 00:12",
-#           "title": "新疆维吾尔自治区巴音郭楞蒙古自治州尉犁县气象台发布大风黄色预警信号",
-#           "url": "/publish/alarm/65282841600000_20260623001215.html",
-#           "pic": "https://image.nmc.cn/assets/img/alarm/p0001002.png"
+#           "alertid": "65282341600000_20260629001515",
+#           "issuetime": "2026/06/29 00:15",
+#           "title": "新疆维吾尔自治区巴音郭楞蒙古自治州尉犁县气象台发布雷电黄色预警信号",
+#           "url": "/publish/alarm/65282341600000_20260629001515.html",
+#           "pic": "https://image.nmc.cn/assets/img/alarm/p0012003.png"
 #         }
 #       ]
-#     },
-#     "stat": {
-#       "province": {"r": 0, "b": 0, "y": 0, "o": 0},
-#       "city": {"r": 0, "b": 0, "y": 0, "o": 0},
-#       "county": {"r": 0, "b": 0, "y": 0, "o": 0}
 #     }
 #   }
 # }
 
-# 行政区划代码查询：
-# 新疆维吾尔自治区：65
-# 巴音郭楞蒙古自治州：6528
-# 尉犁县：652828
-# 完整列表：http://www.nmc.cn/publish/alarm.html（页面下拉选择省份）
+# 超级棉田过滤口径：
+# 尉犁县：652823；巴州：6528；关键词：巴音郭楞/巴州/尉犁/库尔勒
+# 详见 references/nmc-warning-api.md
 ```
 
 ### 7. 天气预警（和风天气，备选）
@@ -542,6 +538,8 @@ curl "https://api.caiyunapp.com/v1/soil?token={CAIYUN_TOKEN}&lng={LON}&lat={LAT}
 25. **Python SDK gzip 处理**：和风天气返回 gzip 压缩数据，使用 `urllib` 时必须自动检测并解压（检查 `raw[:2] == b'\x1f\x8b'`），否则会 UTF-8 解码错误
 26. **🚨 绝不能根据数值预报自行判断气象灾害**：这是原则性错误，不是技术细节。用户明确要求："中国的这个气象局没有这种灾害预警吗？我希望有这种专业的这种预警出来，而不是我们根据这个预测的数值来去自己去做这个预警的判断，因为这是个很专业的事情，特别是你的数据源是否很可靠，数据源有偏差的话，可能就会导致你自己判断的这个灾害是不准的"。正确做法：使用中国气象局国家气象中心 (NMC) 官方预警 API（`nmc.cn/rest/findAlarm`），由专业气象专家研判发布，具有法律效力。详见 `references/nmc-warning-api.md`
 27. **和风天气预警 API 需要付费套餐**：基础免费套餐调用 `/v7/warning/now` 返回 403 Forbidden，需要联系客服升级权限。NMC API 完全免费且更权威，应作为首选
+28. **预报准确率验证必须同点位**：不要把城市中心点预报拿来和机场/METAR站实测直接比。先定义具体站点（站名、ICAO、lat/lon、target、距离、替代说明），再让所有预报源按该站点经纬度查询；历史旧数据如用旧城市名，应保留 alias 映射，避免数据积累期断档
+29. **验证脚本要按 lead_days 分组**：只算“提前7天”会让采集初期一直显示无数据；应同时统计提前1-7天的 MAE/RMSE/样本数，随着历史积累自动填充长提前期结果
 
 ## 通用工作流模式
 
@@ -582,8 +580,39 @@ curl "https://api.caiyunapp.com/v1/soil?token={CAIYUN_TOKEN}&lng={LON}&lat={LAT}
 - `references/provider-comparison.md` — 五平台详细对比表
 - `references/cma-data-source.md` — 中国气象局（CMA）数据源调研：上游原始数据 vs 下游商业服务的差异与价值
 - `references/accuracy-validation.md` — 五源数据准确性验证报告（基于 IBM Weather 机场实测基准，5城市对比）
+- `references/point-based-forecast-validation.md` — 具体气象站点化的预报准确率验证模式：同点位查询、alias 兼容、按 lead_days 分组统计
 
-## 相关工具脚本
+## Python 脚本（skill 内置）
+
+以下脚本位于 `scripts/` 目录，随 skill 分发，提供带错误处理和 GitHub issue 自动反馈的查询能力：
+
+- `scripts/weather_query.py` — 多源天气查询 Python 包装脚本，支持 Open-Meteo / QWeather / NASA POWER 三大平台的常用查询类型（实时/预报/历史/ET0/土壤/预警）。内置 HTTP 错误处理、JSON 解析验证、关键字段缺失检测，异常时自动调用 report_issue 反馈到 GitHub
+- `scripts/report_issue.py` — GitHub Issue 自动反馈脚本，被 weather_query.py 调用。支持去重检查（避免重复提交）、gh CLI fallback、环境变量配置（`GITHUB_REPO` / `GITHUB_TOKEN` / `ISSUE_AUTO`）
+
+### 使用 Python 脚本查询（推荐，带错误反馈）
+
+```bash
+# Open-Meteo 实时天气
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type current
+
+# Open-Meteo 7天预报
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type forecast
+
+# Open-Meteo 历史数据（含 ET0 + 土壤温湿度）
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type historical --start 2026-06-01 --end 2026-06-29
+
+# QWeather 实时天气（需设置 QWEATHER_API_KEY）
+python3 scripts/weather_query.py --provider qweather --location "101010100" --type current
+
+# NASA POWER 历史遥感数据
+python3 scripts/weather_query.py --provider nasa-power --lat 39.90 --lon 116.41 --type historical --start 2026-01-01 --end 2026-06-29
+```
+
+### 使用 curl 直接查询（轻量，无错误反馈）
+
+适合快速验证或 Agent 直接调用。详见上方各平台 API 参考文档。
+
+## 业务应用层脚本（不属于 skill）
 
 以下脚本位于 `/opt/data/weather-accuracy/`（不属于 skill 本身，是业务应用层的实现）：
 
@@ -591,7 +620,7 @@ curl "https://api.caiyunapp.com/v1/soil?token={CAIYUN_TOKEN}&lng={LON}&lat={LAT}
 - `validate_forecasts.py` — 预报准确率验证脚本（对比7天前预报 vs 今天实测）
 - `weather_sdk.py` — Python SDK，封装五大平台 API 调用，自动处理 gzip 压缩
 
-**设计原则**：Skill 只包含文档和 API 参考，不包含业务逻辑脚本。数据采集、验证、SDK 等属于应用层实现，放在业务项目中。
+**设计原则**：Skill 内置 `scripts/` 只包含通用查询和错误反馈工具。数据采集、验证、SDK 等属于应用层实现，放在业务项目中。
 
 ## 依赖
 
@@ -624,6 +653,7 @@ uv pip install requests pyyaml --python .venv/bin/python
 
 ## Changelog
 
+- **5.1.0** (2026-06-29): 新增 Python 查询脚本（`scripts/weather_query.py`）和 GitHub issue 自动反馈机制（`scripts/report_issue.py`）。支持 Open-Meteo / QWeather / NASA POWER 三大平台的常用查询类型，内置 HTTP 错误处理、JSON 解析验证、关键字段缺失检测。API 调用异常时自动在 GitHub 创建 issue（去重+gh CLI fallback）。修正 frontmatter 版本号不一致问题（4.0.0→5.1.0）
 - **5.0.0** (2026-06-23): 新增中国气象局国家气象中心 (NMC) 官方预警 API，支持全国气象灾害预警查询（暴雨/大风/高温/寒潮/雷电/冰雹等），四级等级体系（蓝/黄/橙/红），按行政区划精准过滤。**重要原则**：气象灾害预警必须使用官方权威渠道，不能根据数值预报自行判断
 - **4.0.0** (2026-06-22): 新增 IBM Weather（机场METAR实测，Ground Truth）和 NASA POWER（1981年至今历史遥感），完善预报准确率验证体系，新增 Python SDK 和验证脚本，重命名为 multi-source-weather
 - **3.0.0** (2026-06-22): 重写为多源统一接口，新增自动选择策略、凭据管理、完整 API 覆盖
