@@ -1,3 +1,12 @@
-# 彩云天气 v3 签名脚本依赖（v2.6 Token 方式不需要）
-requests>=2.31.0
-pyyaml>=6.0
+# multi-source-weather 依赖声明
+#
+# 本项目仅使用 Python 标准库，无任何第三方依赖。
+# 核心模块: argparse, json, os, sys, traceback, urllib.request, urllib.error, datetime
+#
+# 测试 (test_weather_query.py) 同样仅使用标准库:
+#   unittest, unittest.mock, json, os, sys, pathlib, urllib.error, io
+# 无需额外安装任何包。
+#
+# 运行测试:
+#   cd scripts && python3 test_weather_query.py
+#   cd scripts && python3 -m unittest test_weather_query -v
