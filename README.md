@@ -138,8 +138,10 @@ multi-source-weather/
 │   ├── point-based-forecast-validation.md  # 气象站点预报验证模式
 │   └── cma-data-source.md            # 中国气象局数据源调研
 └── scripts/
-    ├── weather_query.py              # 多源天气查询（带错误反馈）
-    └── report_issue.py               # GitHub issue 自动反馈
+    ├── weather_query.py              # 多源天气查询（带重试+限流+错误反馈）
+    ├── report_issue.py               # GitHub issue 自动反馈
+    ├── check_api_keys.py             # API Key 验证（cron 可用）
+    └── test_weather_query.py         # 测试套件（44 个测试）
 ```
 
 > **注意**：业务应用层脚本（`daily_collect.py`、`validate_forecasts.py`、`weather_sdk.py`）位于 `/opt/data/weather-accuracy/`，不属于本 skill。
@@ -166,6 +168,7 @@ multi-source-weather/
 
 ## 版本历史
 
+- **5.2.0** (2026-06-29): 新增测试套件（44 个测试）、API Key 验证脚本、HTTP 重试（429/5xx 指数退避）、QWeather 月度限额计数。改为纯标准库依赖。
 - **5.1.0** (2026-06-29): 新增 Python 查询脚本和 GitHub issue 自动反馈机制
 - **5.0.0** (2026-06-23): 新增中国气象局 NMC 官方预警 API
 - **4.0.0** (2026-06-22): 新增 IBM Weather 和 NASA POWER，重命名为 multi-source-weather
