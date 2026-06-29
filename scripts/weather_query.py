@@ -38,6 +38,7 @@ import argparse
 import json
 import os
 import sys
+import time
 import traceback
 import urllib.request
 import urllib.error
@@ -65,21 +66,52 @@ def _report_error(title, error_detail, context):
 
 
 def _http_get(url, timeout=30):
-    """发起 HTTP GET 请求，返回 (status_code, body_text) 或抛出异常"""
+    """发起 HTTP GET 请求，返回 (status_code, body_text) 或抛出异常
+
+    内置重试逻辑：对 HTTP 429 (Too Many Requests)、5xx 服务端错误以及
+    网络超时/连接错误自动重试，最多 3 次，指数退避（1s, 2s, 4s）。
+    4xx 客户端错误（非 429）不重试，直接返回。
+    """
+    max_retries = 3
+    backoff_times = [1, 2, 4]  # 指数退避：1s, 2s, 4s
+
     req = urllib.request.Request(url, headers={
         "User-Agent": "multi-source-weather/4.0",
         "Accept": "application/json",
     })
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, resp.read().decode("utf-8")
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")
-        return e.code, body
-    except urllib.error.URLError as e:
-        raise ConnectionError(f"网络请求失败: {e.reason}")
-    except Exception as e:
-        raise ConnectionError(f"请求异常: {e}")
+
+    last_status = 0
+    last_body = ""
+
+    for attempt in range(max_retries + 1):  # 1 次初始 + 3 次重试 = 4 次尝试
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as resp:
+                return resp.status, resp.read().decode("utf-8")
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="replace")
+            last_status = e.code
+            last_body = body
+            # 429 (Too Many Requests) 和 5xx 服务端错误才重试
+            if (e.code == 429 or 500 <= e.code < 600) and attempt < max_retries:
+                time.sleep(backoff_times[attempt])
+                continue
+            # 4xx (非 429) 不重试，直接返回
+            return e.code, body
+        except (urllib.error.URLError, ConnectionError, TimeoutError, OSError) as e:
+            # 网络超时/连接错误也重试（NASA POWER 偶尔超时）
+            last_status = 0
+            last_body = str(e)
+            if attempt < max_retries:
+                time.sleep(backoff_times[attempt])
+                continue
+            raise ConnectionError(
+                f"网络请求失败（重试 {max_retries} 次后仍失败）: {e}"
+            )
+        except Exception as e:
+            raise ConnectionError(f"请求异常: {e}")
+
+    # 重试耗尽（仅 429/5xx 场景），返回最后一次的状态码和响应体
+    return last_status, last_body
 
 
 # ──────────────────────────────────────────────
@@ -168,6 +200,69 @@ def query_open_meteo(lat, lon, data_type, start_date=None, end_date=None):
 # QWeather (和风天气)
 # ──────────────────────────────────────────────
 
+_QWEATHER_COUNT_FILE = "/tmp/weather_qweather_count.txt"
+_QWEATHER_MONTHLY_LIMIT = 50000
+_QWEATHER_WARN_THRESHOLD = 45000
+
+
+def _get_qweather_month_key():
+    """返回当前月份的 key，格式 YYYY-MM"""
+    return datetime.now().strftime("%Y-%m")
+
+
+def _get_qweather_count():
+    """读取当月 QWeather 调用次数"""
+    month_key = _get_qweather_month_key()
+    try:
+        with open(_QWEATHER_COUNT_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if ":" in line:
+                    key, count = line.split(":", 1)
+                    if key == month_key:
+                        return int(count)
+    except (FileNotFoundError, ValueError):
+        pass
+    return 0
+
+
+def _increment_qweather_count():
+    """增加当月 QWeather 调用计数，返回更新后的次数"""
+    month_key = _get_qweather_month_key()
+    new_count = _get_qweather_count() + 1
+
+    lines = []
+    found = False
+    try:
+        with open(_QWEATHER_COUNT_FILE, "r") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                if ":" in line:
+                    key, _ = line.split(":", 1)
+                    if key == month_key:
+                        lines.append(f"{month_key}:{new_count}")
+                        found = True
+                    else:
+                        lines.append(line)
+    except FileNotFoundError:
+        pass
+
+    if not found:
+        lines.append(f"{month_key}:{new_count}")
+
+    try:
+        with open(_QWEATHER_COUNT_FILE, "w") as f:
+            f.write("\n".join(lines) + "\n")
+    except OSError as e:
+        print(f"[weather_query] 警告: 无法写入 QWeather 计数文件: {e}", file=sys.stderr)
+
+    return new_count
+
+
 def query_qweather(location_id, data_type, api_key=None):
     """查询和风天气 API"""
     if not api_key:
@@ -184,6 +279,25 @@ def query_qweather(location_id, data_type, api_key=None):
         url = f"https://devapi.qweather.com/v7/warning/list?location={location_id}&key={api_key}"
     else:
         raise ValueError(f"和风天气不支持查询类型: {data_type}")
+
+    # ── 月度调用限额检查 ──
+    current_count = _get_qweather_count()
+    if current_count >= _QWEATHER_MONTHLY_LIMIT:
+        print(
+            f"[weather_query] QWeather 月度限额已用尽"
+            f"（{current_count}/{_QWEATHER_MONTHLY_LIMIT}），拒绝调用",
+            file=sys.stderr,
+        )
+        return {"error": "QWeather 月度限额已用尽"}
+    if current_count >= _QWEATHER_WARN_THRESHOLD:
+        print(
+            f"[weather_query] 警告: QWeather 当月已调用 {current_count} 次，"
+            f"接近限额（{_QWEATHER_MONTHLY_LIMIT}）",
+            file=sys.stderr,
+        )
+
+    # 增加调用计数（API 调用无论成功与否都计入配额）
+    _increment_qweather_count()
 
     status, body = _http_get(url)
 
