@@ -28,6 +28,27 @@ cp credentials.example.yaml credentials.yaml
 
 ### 3. 使用示例
 
+#### Python 脚本查询（推荐，带错误反馈）
+
+```bash
+# Open-Meteo 实时天气
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type current
+
+# Open-Meteo 7天预报
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type forecast
+
+# Open-Meteo 历史数据（含 ET0 + 土壤温湿度）
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type historical --start 2026-06-01 --end 2026-06-29
+
+# QWeather 实时天气（需设置 QWEATHER_API_KEY）
+python3 scripts/weather_query.py --provider qweather --location "101010100" --type current
+
+# NASA POWER 历史遥感数据
+python3 scripts/weather_query.py --provider nasa-power --lat 39.90 --lon 116.41 --type historical --start 2026-01-01 --end 2026-06-29
+```
+
+#### curl 直接查询（轻量，无错误反馈）
+
 ```bash
 # 实时天气（中国最优）
 curl --compressed "https://{QWEATHER_HOST}/v7/grid-weather/now?location={LON},{LAT}&key={QWEATHER_KEY}"
@@ -40,6 +61,37 @@ curl "https://api.weather.com/v1/location/ZBAA:9:CN/observations/historical.json
 
 # NASA POWER 历史遥感
 curl "https://power.larc.nasa.gov/api/temporal/daily/point?parameters=T2M_MAX,T2M_MIN,PRECTOTCORR&latitude=41.48&longitude=86.21&start=20260101&end=20260601&community=ag&format=JSON"
+```
+
+## GitHub Issue 自动反馈
+
+当使用 Python 脚本查询天气数据遇到 API 异常时（HTTP 错误、JSON 解析失败、关键字段缺失），脚本会自动在 GitHub 仓库创建 issue 反馈问题。
+
+### 配置
+
+| 环境变量 | 说明 | 默认值 |
+|---------|------|--------|
+| `GITHUB_REPO` | GitHub 仓库 (owner/repo) | `Againliu/weather` |
+| `GITHUB_TOKEN` | GitHub API token | （必须设置才提交） |
+| `ISSUE_AUTO` | 是否自动提交 | `1`（提交），`0` 只打印 |
+| `QWEATHER_API_KEY` | 和风天气 API Key | （使用 qweather 时必须） |
+
+### 工作机制
+
+1. `weather_query.py` 捕获 API 异常（HTTP 非200、JSON 解析失败、关键字段缺失）
+2. 调用 `report_issue.py` 的 `auto_report_issue()` 函数
+3. 先检查 GitHub 是否已有相似 open issue（避免重复提交）
+4. 创建 issue（优先 REST API，fallback 到 gh CLI）
+5. Issue 标签：`bug`、`auto-reported`，含完整上下文（provider/url/location/type）
+
+### 手动测试
+
+```bash
+# 测试 issue 反馈（不实际提交）
+ISSUE_AUTO=0 GITHUB_TOKEN=*** python3 scripts/weather_query.py --provider open-meteo --lat 999 --lon 999 --type current
+
+# 手动提交一个 issue
+python3 scripts/report_issue.py --title "测试 issue" --detail "手动测试" --context '{"provider":"test"}'
 ```
 
 ## 五平台定位
@@ -71,21 +123,26 @@ multi-source-weather/
 ├── credentials.yaml                  # 凭据配置（不上传Git）
 ├── credentials.example.yaml          # 凭据模板
 ├── README.md                         # 本文件
+├── requirements.txt                  # Python 依赖
 ├── references/
 │   ├── qweather-api.md               # 和风天气 API 参考
 │   ├── caiyun-api.md                 # 彩云天气 API 参考
 │   ├── open-meteo-api.md             # Open-Meteo API 参考
 │   ├── ibm-weather-api.md            # IBM Weather API 参考
 │   ├── nasa-power-api.md             # NASA POWER API 参考
+│   ├── nmc-warning-api.md            # 中国气象局预警 API 参考
 │   ├── caiyun-v3-signing.py          # 彩云天气 v3 签名工具
 │   ├── qweather-api-setup.md         # 和风天气接入配置
 │   ├── provider-comparison.md        # 五平台详细对比表
 │   ├── accuracy-validation.md        # 五源数据准确性验证报告
+│   ├── point-based-forecast-validation.md  # 气象站点预报验证模式
 │   └── cma-data-source.md            # 中国气象局数据源调研
 └── scripts/
-    ├── daily_collect.py              # 每日数据采集脚本
-    └── validate_forecasts.py         # 预报准确率验证脚本
+    ├── weather_query.py              # 多源天气查询（带错误反馈）
+    └── report_issue.py               # GitHub issue 自动反馈
 ```
+
+> **注意**：业务应用层脚本（`daily_collect.py`、`validate_forecasts.py`、`weather_sdk.py`）位于 `/opt/data/weather-accuracy/`，不属于本 skill。
 
 ## 数据验证方法论
 
@@ -107,6 +164,15 @@ multi-source-weather/
 - **NASA POWER**：最新数据有 2-3 天延迟，缺失值返回 -999.0
 - **Open-Meteo Archive**：不是实测，是 ERA5 再分析，不能作为 Ground Truth
 
+## 版本历史
+
+- **5.1.0** (2026-06-29): 新增 Python 查询脚本和 GitHub issue 自动反馈机制
+- **5.0.0** (2026-06-23): 新增中国气象局 NMC 官方预警 API
+- **4.0.0** (2026-06-22): 新增 IBM Weather 和 NASA POWER，重命名为 multi-source-weather
+- **3.0.0** (2026-06-22): 重写为多源统一接口
+- **2.0.0** (2026-06-22): 扩展为多数据源
+- **1.0.0** (2026-06-15): 初始版本
+
 ## 许可证
 
-MIT License
+MIT License © Jian Liu
