@@ -1,7 +1,7 @@
 ---
 name: multi-source-weather
 description: 多源气象数据统一接口。根据查询地点和需求自动选择最优数据源（Open-Meteo / 和风天气 / 彩云天气 / IBM Weather / NASA POWER）。覆盖实时天气、预报、历史实测、分钟级降水、ET0蒸散量、土壤湿度、空气质量、太阳辐射、预报准确率验证等全场景需求。适用于农业、能源、物流、科研、应急管理等各行各业。
-version: 5.1.0
+version: 5.2.0
 author: Jian
 license: MIT
 platforms: [linux, macos, windows]
@@ -620,7 +620,24 @@ python3 scripts/weather_query.py --provider nasa-power --lat 39.90 --lon 116.41 
 - `validate_forecasts.py` — 预报准确率验证脚本（对比7天前预报 vs 今天实测）
 - `weather_sdk.py` — Python SDK，封装五大平台 API 调用，自动处理 gzip 压缩
 
-**设计原则**：Skill 内置 `scripts/` 只包含通用查询和错误反馈工具。数据采集、验证、SDK 等属于应用层实现，放在业务项目中。
+**设计原则**：Skill 内置 `scripts/` 包含通用查询、错误反馈、API Key 验证和测试工具。数据采集、验证、SDK 等属于应用层实现，放在业务项目中。
+
+### Skill 内置脚本
+
+| 脚本 | 说明 |
+|------|------|
+| `scripts/weather_query.py` | 多源天气查询（3 平台，带重试+限流+错误反馈） |
+| `scripts/report_issue.py` | GitHub issue 自动反馈（去重 + gh CLI fallback） |
+| `scripts/check_api_keys.py` | API Key 验证（检查 QWEATHER_API_KEY / GITHUB_TOKEN，cron 可用） |
+| `scripts/test_weather_query.py` | 测试套件（44 个测试，全 mock，覆盖参数验证/API 响应/重试/限流） |
+
+### 重试与限流机制
+
+`weather_query.py` 内置：
+
+- **HTTP 重试**：429（Too Many Requests）和 5xx 错误自动重试，最多 3 次，指数退避（1s → 2s → 4s）。4xx 错误不重试。
+- **网络错误重试**：`URLError` / `ConnectionError` / `TimeoutError` / `OSError` 同样重试 3 次（覆盖 NASA POWER 超时场景）。
+- **QWeather 月度限额**：自动计数（`/tmp/weather_qweather_count.txt`），接近 45000 次打印 stderr 警告，达到 50000 次拒绝调用。
 
 ## 依赖
 
@@ -628,14 +645,18 @@ python3 scripts/weather_query.py --provider nasa-power --lat 39.90 --lon 116.41 
 - `curl`（和风天气必须加 `--compressed`）
 - `python3`（>=3.8）
 
-### Python 依赖（仅脚本需要）
-- `requests` >= 2.31
-- `pyyaml` >= 6.0
+### Python 依赖
+
+weather_query.py 仅使用 Python 标准库（`urllib.request`, `json`, `time`, `os`, `sys`），无需安装第三方包。
+
+测试套件（`test_weather_query.py`）同样仅用标准库（`unittest`, `unittest.mock`）。
 
 ```bash
-# 安装方式（使用 uv）
-uv venv .venv
-uv pip install requests pyyaml --python .venv/bin/python
+# 无需安装任何依赖，直接运行
+python3 scripts/weather_query.py --provider open-meteo --lat 39.90 --lon 116.41 --type current
+
+# 运行测试
+python3 scripts/test_weather_query.py
 ```
 
 ## Verification Checklist
@@ -653,6 +674,7 @@ uv pip install requests pyyaml --python .venv/bin/python
 
 ## Changelog
 
+- **5.2.0** (2026-06-29): 新增测试套件（44 个测试）、API Key 验证脚本（`check_api_keys.py`）、HTTP 重试机制（429/5xx 指数退避）、QWeather 月度限额计数（5 万次/月，接近时警告）。weather_query.py 从 332 行扩展至 446 行。依赖改为纯标准库（不再需要 requests/pyyaml）。
 - **5.1.0** (2026-06-29): 新增 Python 查询脚本（`scripts/weather_query.py`）和 GitHub issue 自动反馈机制（`scripts/report_issue.py`）。支持 Open-Meteo / QWeather / NASA POWER 三大平台的常用查询类型，内置 HTTP 错误处理、JSON 解析验证、关键字段缺失检测。API 调用异常时自动在 GitHub 创建 issue（去重+gh CLI fallback）。修正 frontmatter 版本号不一致问题（4.0.0→5.1.0）
 - **5.0.0** (2026-06-23): 新增中国气象局国家气象中心 (NMC) 官方预警 API，支持全国气象灾害预警查询（暴雨/大风/高温/寒潮/雷电/冰雹等），四级等级体系（蓝/黄/橙/红），按行政区划精准过滤。**重要原则**：气象灾害预警必须使用官方权威渠道，不能根据数值预报自行判断
 - **4.0.0** (2026-06-22): 新增 IBM Weather（机场METAR实测，Ground Truth）和 NASA POWER（1981年至今历史遥感），完善预报准确率验证体系，新增 Python SDK 和验证脚本，重命名为 multi-source-weather
